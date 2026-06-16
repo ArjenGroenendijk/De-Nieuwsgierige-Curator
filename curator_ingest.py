@@ -20,8 +20,8 @@ def haal_artikelen_op(rss_url):
         return []
     
     artikelen_lijst = []
-    # We pakken er 3 om te testen
-    for entry in feed.entries[:3]:
+    # We pakken er 5 om te testen
+    for entry in feed.entries[:5]:
         artikel = {
             'titel': entry.get('title', 'Geen titel'),
             'link': entry.get('link', 'Geen link'),
