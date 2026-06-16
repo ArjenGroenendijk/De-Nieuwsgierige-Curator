@@ -52,7 +52,7 @@ jobs:
         password: ${{ secrets.MAIL_PASSWORD }}
         subject: 🎨 De Nieuwsgierige Curator heeft nieuwe parels voor je!
         # PAS DE ONDERSTAANDE REGLER AAN NAAR JOUW GEGEVENS:
-        to: JOUW_EIGEN_EMAILADRES@HETWEB.NL
+        to: groenendijk.arjen@gmail.com
         from: De Nieuwsgierige Curator <robot@github.com>
         body: |
           🤖 Gegroet! 
@@ -60,4 +60,4 @@ jobs:
           De wekelijkse inspectie is voltooid. De Curator heeft de nieuwste kunsthistorische essays doorgeplozen en de absolute parels voor je klaargezet.
           
           Bekijk de nieuwe expositie direct op je dashboard:
-          https://JE-APP-NAAM.streamlit.app (<- VERVANG DIT DOOR JE STREAMLIT LINK)
+          https://de-nieuwsgierige-curator-bzlnvahwbdey2kgzlktzmbM.streamlit.app
