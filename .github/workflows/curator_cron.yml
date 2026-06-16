@@ -1,0 +1,63 @@
+name: Wekelijkse Kunst Inspectie
+
+on:
+  schedule:
+    # Elke vrijdag om 21:36 UTC (dit is 23:36 Nederlandse zomertijd)
+    - cron: '36 21 * * 5'
+  workflow_dispatch: # Hiermee kun je de robot ook handmatig starten om te testen
+
+jobs:
+  curate:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Haal de code uit de repository op
+    - name: Code ophalen
+      uses: actions/checkout@v4
+
+    # 2. Installeer Python
+    - name: Python instellen
+      uses: actions/setup-python@v5
+      with:
+        python-python-version: '3.11'
+
+    # 3. Installeer de benodigde bibliotheken
+    - name: Bibliotheken installeren
+      run: |
+        pip install feedparser google-genai
+
+    # 4. Draai het script met de Gemini API-sleutel
+    - name: De Curator activeren
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      run: python curator_ingest.py
+
+    # 5. Sla de nieuwe parels op in GitHub (zodat Streamlit ze direct ziet)
+    - name: Database updaten in Repository
+      run: |
+        git config --global user.name 'GitHub Robot'
+        git config --global user.email 'robot@github.com'
+        git add artikelen_database.json
+        git commit -m "Robot: database bijgewerkt met nieuwe parels" || exit 0
+        git push
+
+    # 6. Stuur een e-mail met de link
+    - name: Mail versturen
+      uses: dawidd6/action-send-mail@v3
+      with:
+        # Dit voorbeeld gebruikt de SMTP-server van Gmail
+        server_address: smtp.gmail.com
+        server_port: 465
+        username: ${{ secrets.MAIL_USERNAME }}
+        password: ${{ secrets.MAIL_PASSWORD }}
+        subject: 🎨 De Nieuwsgierige Curator heeft nieuwe parels voor je!
+        # PAS DE ONDERSTAANDE REGLER AAN NAAR JOUW GEGEVENS:
+        to: JOUW_EIGEN_EMAILADRES@HETWEB.NL
+        from: De Nieuwsgierige Curator <robot@github.com>
+        body: |
+          🤖 Gegroet! 
+          
+          De wekelijkse inspectie is voltooid. De Curator heeft de nieuwste kunsthistorische essays doorgeplozen en de absolute parels voor je klaargezet.
+          
+          Bekijk de nieuwe expositie direct op je dashboard:
+          https://JE-APP-NAAM.streamlit.app (<- VERVANG DIT DOOR JE STREAMLIT LINK)
