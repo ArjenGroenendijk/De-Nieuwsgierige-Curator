@@ -2,7 +2,8 @@ import urllib.request
 import feedparser
 import os
 import json
-from openai import OpenAI
+from google import genai
+from google.genai import types
 
 def haal_artikelen_op(rss_url):
     print(f"De Curator struint het web af naar: {rss_url}...\n")
@@ -19,26 +20,26 @@ def haal_artikelen_op(rss_url):
         return []
     
     artikelen_lijst = []
-    # We pakken er 3 om API-tegoed te besparen tijdens het testen
+    # We pakken er 3 om te testen
     for entry in feed.entries[:3]:
         artikel = {
             'titel': entry.get('title', 'Geen titel'),
             'link': entry.get('link', 'Geen link'),
-            'ruwe_tekst': entry.get('summary', entry.get('description', 'Geen beschrijving'))[:500] # Eerste 500 tekens is genoeg
+            'ruwe_tekst': entry.get('summary', entry.get('description', 'Geen beschrijving'))[:500]
         }
         artikelen_lijst.append(artikel)
     return artikelen_lijst
 
-def beoordeel_met_ai(artikelen):
-    # De client zoekt automatisch naar de omgevingsvariabele 'OPENAI_API_KEY'
-    if not os.environ.get("OPENAI_API_KEY"):
-        print("⚠️ Geen API sleutel gevonden! Vul de OPENAI_API_KEY in je terminal in.")
+def beoordeel_met_gemini(artikelen):
+    # Controleer of de API-key aanwezig is
+    if not os.environ.get("GEMINI_API_KEY"):
+        print("⚠️ Geen API sleutel gevonden! Vul de GEMINI_API_KEY in je terminal in.")
         return
     
-    client = OpenAI()
-    print("De Curator leest de verhalen en velt een oordeel...\n")
+    # Initialiseer de Gemini Client (pakt automatisch de GEMINI_API_KEY uit de omgeving)
+    client = genai.Client()
+    print("De Curator leest de verhalen en velt een oordeel via Google Gemini...\n")
     
-    # We bereiden de tekst voor die we naar de AI sturen
     artikelen_tekst = json.dumps(artikelen, indent=2)
     
     prompt = f"""
@@ -47,9 +48,9 @@ def beoordeel_met_ai(artikelen):
     1 = Mainstream (bijv. Vincent van Gogh, Leonardo da Vinci, Rembrandt).
     10 = Extreem obscuur, bizar of een vergeten historisch feit.
     
-    Schrijf ook een korte, prikkelende samenvatting in het Nederlands van max 2 zinnen.
+    Schrijf ook een korte, prikkelende samenvatting in het Nederlands van maximaal 2 zinnen.
     
-    Geef ALTIJD antwoord in dit exacte JSON formaat:
+    Geef antwoord in dit exacte JSON formaat:
     {{
       "artikelen": [
         {{
@@ -64,15 +65,17 @@ def beoordeel_met_ai(artikelen):
     {artikelen_tekst}
     """
     
-    # We vragen de AI om een gestructureerd JSON antwoord
-    response = client.chat.completions.create(
-        model="gpt-4o-mini", # Lekker goedkoop en snel voor een MVP
-        response_format={ "type": "json_object" },
-        messages=[{"role": "user", "content": prompt}]
+    # We roepen Gemini aan en dwingen een JSON-output af
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json"
+        )
     )
     
-    # Print het eindoordeel
-    beoordeling = json.loads(response.choices[0].message.content)
+    # Print het resultaat netjes uit
+    beoordeling = json.loads(response.text)
     print(json.dumps(beoordeling, indent=2, ensure_ascii=False))
 
 if __name__ == "__main__":
@@ -80,4 +83,4 @@ if __name__ == "__main__":
     gevonden_artikelen = haal_artikelen_op(kunst_feed_url)
     
     if gevonden_artikelen:
-        beoordeel_met_ai(gevonden_artikelen)
+        beoordeel_met_gemini(gevonden_artikelen)
