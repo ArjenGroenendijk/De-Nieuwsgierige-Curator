@@ -5,30 +5,47 @@ import json
 from google import genai
 from google.genai import types
 
-def haal_artikelen_op(rss_url):
-    print(f"De Curator struint het web af naar: {rss_url}...\n")
-    try:
-        req = urllib.request.Request(
-            rss_url, 
-            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        )
-        with urllib.request.urlopen(req) as response:
-            html_content = response.read()
-        feed = feedparser.parse(html_content)
-    except Exception as e:
-        print(f"Er ging iets mis bij het ophalen: {e}")
-        return []
+# --- CONFIGURATIE: DE BRONNENLIJST ---
+BRONNEN = {
+    "Public Domain Review": "https://publicdomainreview.org/feed/",
+    "British Library Medieval": "https://blogs.bl.uk/manuscripts/atom.xml",
+    "Atlas Obscura": "https://www.atlasobscura.com/feeds/latest",
+    "Europeana Art History": "https://www.europeana.eu/en/blog/rss"
+}
+
+def haal_artikelen_multi_bron():
+    alle_artikelen = []
     
-    artikelen_lijst = []
-    # We pakken er nu netjes 5
-    for entry in feed.entries[:5]:
-        artikel = {
-            'titel': entry.get('title', 'Geen titel'),
-            'link': entry.get('link', 'Geen link'),
-            'ruwe_tekst': entry.get('summary', entry.get('description', 'Geen beschrijving'))[:500]
-        }
-        artikelen_lijst.append(artikel)
-    return artikelen_lijst
+    for bron_naam, rss_url in BRONNEN.items():
+        print(f"🕵️ De Curator inspecteert {bron_naam}...")
+        try:
+            req = urllib.request.Request(
+                rss_url, 
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+            )
+            with urllib.request.urlopen(req) as response:
+                html_content = response.read()
+            feed = feedparser.parse(html_content)
+            
+            # Pak de top 2 meest recente artikelen van deze specifieke bron
+            teller = 0
+            for entry in feed.entries:
+                if teller >= 2:
+                    break
+                
+                artikel = {
+                    'titel': f"[{bron_naam}] {entry.get('title', 'Geen titel')}",
+                    'link': entry.get('link', 'Geen link'),
+                    'ruwe_tekst': entry.get('summary', entry.get('description', 'Geen beschrijving'))[:500]
+                }
+                alle_artikelen.append(artikel)
+                teller += 1
+                
+        except Exception as e:
+            print(f"❌ Fout bij ophalen van {bron_naam}: {e}")
+            
+    print(f"\nTotaal {len(alle_artikelen)} artikelen verzameld uit {len(BRONNEN)} bronnen.\n")
+    return alle_artikelen
 
 def beoordeel_met_gemini(artikelen):
     if not os.environ.get("GEMINI_API_KEY"):
@@ -36,23 +53,24 @@ def beoordeel_met_gemini(artikelen):
         return None
     
     client = genai.Client()
-    print("De Curator leest de verhalen en velt een oordeel via Google Gemini...\n")
+    print("🧠 Gemini weegt de obscuriteit van de verzamelde oogst...\n")
     
     artikelen_tekst = json.dumps(artikelen, indent=2)
     
     prompt = f"""
-    Je bent De Nieuwsgierige Curator, een expert in obscure kunstgeschiedenis.
+    Je bent De Nieuwsgierige Curator, een expert in obscure kunst en cultuurgeschiedenis.
     Beoordeel de volgende artikelen. Geef elk artikel een 'obscuriteits_score' van 1 tot 10.
-    1 = Mainstream (bijv. Vincent van Gogh, Leonardo da Vinci).
-    10 = Extreem obscuur, bizar of een vergeten historisch feit.
+    1 = Heel bekend/mainstream geschiedenis.
+    10 = Extreem obscuur, bizar, of een totaal vergeten historisch feit/kunstwerk.
     
-    Schrijf ook een korte, prikkelende samenvatting in het Nederlands van maximaal 2 zinnen.
+    Schrijf een korte, prikkelende samenvatting in het Nederlands van maximaal 2 zinnen.
+    Behoud de bron-tag in de titel (bijvoorbeeld: [Atlas Obscura] Titel).
     
     Geef antwoord in dit exacte JSON formaat:
     {{
       "artikelen": [
         {{
-          "titel": "Titel van het artikel",
+          "titel": "Titel van het artikel inclusief de brontag",
           "obscuriteits_score": 8,
           "samenvatting": "Nederlandse samenvatting hier."
         }}
@@ -76,22 +94,16 @@ def sla_parels_op(beoordeling, originele_artikelen):
         return
         
     parels = []
-    
-    # Maak een handige lookup om de originele link terug te vinden op basis van de titel
     links_dict = {art['titel']: art['link'] for art in originele_artikelen}
     
-    # Filter de artikelen: we willen alleen de échte parels (score >= 7)
     for art in beoordeling["artikelen"]:
         if art.get("obscuriteits_score", 0) >= 7:
-            # Voeg de originele link toe aan de AI-beoordeling
             art["link"] = links_dict.get(art["titel"], "#")
             parels.append(art)
             
-    # Sla de parels op in een JSON bestand
     bestandsnaam = "artikelen_database.json"
-    
-    # Als het bestand al bestaat, laden we de oude data in zodat we niks overschrijven
     bestaande_data = []
+    
     if os.path.exists(bestandsnaam):
         with open(bestandsnaam, 'r', encoding='utf-8') as f:
             try:
@@ -99,7 +111,6 @@ def sla_parels_op(beoordeling, originele_artikelen):
             except json.JSONDecodeError:
                 bestaande_data = []
                 
-    # Voeg alleen unieke nieuwe parels toe (check op basis van titel)
     bestaande_titels = {b['titel'] for b in bestaande_data}
     nieuwe_toevoegingen = [p for p in parels if p['titel'] not in bestaande_titels]
     
@@ -108,11 +119,10 @@ def sla_parels_op(beoordeling, originele_artikelen):
     with open(bestandsnaam, 'w', encoding='utf-8') as f:
         json.dump(eind_data, f, indent=2, ensure_ascii=False)
         
-    print(f"📁 Database bijgewerkt! Er zijn {len(nieuwe_toevoegingen)} nieuwe parels opgeslagen in '{bestandsnaam}'.")
+    print(f"📁 Database bijgewerkt! {len(nieuwe_toevoegingen)} nieuwe parels toegevoegd.")
 
 if __name__ == "__main__":
-    kunst_feed_url = "https://publicdomainreview.org/feed/"
-    gevonden_artikelen = haal_artikelen_op(kunst_feed_url)
+    gevonden_artikelen = haal_artikelen_multi_bron()
     
     if gevonden_artikelen:
         ai_beoordeling = beoordeel_met_gemini(gevonden_artikelen)
