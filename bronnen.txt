@@ -1,0 +1,4 @@
+Public Domain Review | https://publicdomainreview.org/feed/
+British Library Medieval | https://blogs.bl.uk/manuscripts/atom.xml
+Atlas Obscura | https://www.atlasobscura.com/feeds/latest
+DailyArt Magazine | https://www.dailyartmagazine.com/feed/
