@@ -10,7 +10,7 @@ BRONNEN = {
     "Public Domain Review": "https://publicdomainreview.org/feed/",
     "British Library Medieval": "https://blogs.bl.uk/manuscripts/atom.xml",
     "Atlas Obscura": "https://www.atlasobscura.com/feeds/latest",
-    "Europeana Art History": "https://www.europeana.eu/en/blog/rss"
+    "DailyArt Magazine": "https://www.dailyartmagazine.com/feed/"
 }
 
 def haal_artikelen_multi_bron():
@@ -27,7 +27,6 @@ def haal_artikelen_multi_bron():
                 html_content = response.read()
             feed = feedparser.parse(html_content)
             
-            # Pak de top 2 meest recente artikelen van deze specifieke bron
             teller = 0
             for entry in feed.entries:
                 if teller >= 2:
@@ -81,16 +80,21 @@ def beoordeel_met_gemini(artikelen):
     {artikelen_tekst}
     """
     
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=prompt,
-        config=types.GenerateContentConfig(response_mime_type="application/json")
-    )
-    
-    return json.loads(response.text)
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(response_mime_type="application/json")
+        )
+        return json.loads(response.text)
+    except Exception as e:
+        # Vang serverfouten (zoals de 503) netjes op zonder te crashen
+        print(f"⚠️ Google Gemini is momenteel overbelast of onbereikbaar. De robot probeert het bij de volgende run opnieuw. Details: {e}\n")
+        return None
 
 def sla_parels_op(beoordeling, originele_artikelen):
     if not beoordeling or "artikelen" not in beoordeling:
+        print("ℹ️ Geen nieuwe beoordelingen om te verwerken.")
         return
         
     parels = []
