@@ -5,18 +5,30 @@ import json
 from google import genai
 from google.genai import types
 
-# --- CONFIGURATIE: DE BRONNENLIJST ---
-BRONNEN = {
-    "Public Domain Review": "https://publicdomainreview.org/feed/",
-    "British Library Medieval": "https://blogs.bl.uk/manuscripts/atom.xml",
-    "Atlas Obscura": "https://www.atlasobscura.com/feeds/latest",
-    "DailyArt Magazine": "https://www.dailyartmagazine.com/feed/"
-}
-
 def haal_artikelen_multi_bron():
     alle_artikelen = []
+    bestandsnaam_bronnen = "bronnen.txt"
     
-    for bron_naam, rss_url in BRONNEN.items():
+    # 1. Controleer of het tekstbestand bestaat
+    if not os.path.exists(bestandsnaam_bronnen):
+        print(f"❌ Fout: Configuratiedocument '{bestandsnaam_bronnen}' niet gevonden!")
+        return []
+        
+    # 2. Lees het tekstbestand regel voor regel uit
+    bronnen = {}
+    with open(bestandsnaam_bronnen, 'r', encoding='utf-8') as f:
+        for regel in f:
+            regel = regel.strip()
+            # Sla lege regels of regels zonder het scheidingsteken '|' over
+            if not regel or "|" not in regel:
+                continue
+                
+            # Splits de regel op het eerste '|' teken
+            naam, url = regel.split("|", 1)
+            bronnen[naam.strip()] = url.strip()
+
+    # 3. Inspecteer de ingelezen bronnen
+    for bron_naam, rss_url in bronnen.items():
         print(f"🕵️ De Curator inspecteert {bron_naam}...")
         try:
             req = urllib.request.Request(
@@ -43,7 +55,7 @@ def haal_artikelen_multi_bron():
         except Exception as e:
             print(f"❌ Fout bij ophalen van {bron_naam}: {e}")
             
-    print(f"\nTotaal {len(alle_artikelen)} artikelen verzameld uit {len(BRONNEN)} bronnen.\n")
+    print(f"\nTotaal {len(alle_artikelen)} artikelen verzameld uit {len(bronnen)} bronnen.\n")
     return alle_artikelen
 
 def beoordeel_met_gemini(artikelen):
@@ -88,8 +100,7 @@ def beoordeel_met_gemini(artikelen):
         )
         return json.loads(response.text)
     except Exception as e:
-        # Vang serverfouten (zoals de 503) netjes op zonder te crashen
-        print(f"⚠️ Google Gemini is momenteel overbelast of onbereikbaar. De robot probeert het bij de volgende run opnieuw. Details: {e}\n")
+        print(f"⚠️ Google Gemini is momenteel overbelast of onbereikbaar. Details: {e}\n")
         return None
 
 def sla_parels_op(beoordeling, originele_artikelen):
