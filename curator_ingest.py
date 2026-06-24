@@ -9,25 +9,19 @@ def haal_artikelen_multi_bron():
     alle_artikelen = []
     bestandsnaam_bronnen = "bronnen.txt"
     
-    # 1. Controleer of het tekstbestand bestaat
     if not os.path.exists(bestandsnaam_bronnen):
         print(f"❌ Fout: Configuratiedocument '{bestandsnaam_bronnen}' niet gevonden!")
         return []
         
-    # 2. Lees het tekstbestand regel voor regel uit
     bronnen = {}
     with open(bestandsnaam_bronnen, 'r', encoding='utf-8') as f:
         for regel in f:
             regel = regel.strip()
-            # Sla lege regels of regels zonder het scheidingsteken '|' over
             if not regel or "|" not in regel:
                 continue
-                
-            # Splits de regel op het eerste '|' teken
             naam, url = regel.split("|", 1)
             bronnen[naam.strip()] = url.strip()
 
-    # 3. Inspecteer de ingelezen bronnen
     for bron_naam, rss_url in bronnen.items():
         print(f"🕵️ De Curator inspecteert {bron_naam}...")
         try:
@@ -44,8 +38,10 @@ def haal_artikelen_multi_bron():
                 if teller >= 2:
                     break
                 
+                # We houden de titel hier SCHOON (zonder de brontag)
                 artikel = {
-                    'titel': f"[{bron_naam}] {entry.get('title', 'Geen titel')}",
+                    'titel': entry.get('title', 'Geen titel').strip(),
+                    'bron': bron_naam,
                     'link': entry.get('link', 'Geen link'),
                     'ruwe_tekst': entry.get('summary', entry.get('description', 'Geen beschrijving'))[:500]
                 }
@@ -64,31 +60,34 @@ def beoordeel_met_gemini(artikelen):
         return None
     
     client = genai.Client()
-    print("🧠 Gemini weegt de obscuriteit van de verzamelde oogst...\n")
+    print("🧠 Gemini elimineert duplicaten en weegt de obscuriteit...\n")
     
     artikelen_tekst = json.dumps(artikelen, indent=2)
     
     prompt = f"""
     Je bent De Nieuwsgierige Curator, een expert in obscure kunst en cultuurgeschiedenis.
-    Beoordeel de volgende artikelen. Geef elk artikel een 'obscuriteits_score' van 1 tot 10.
-    1 = Heel bekend/mainstream geschiedenis.
-    10 = Extreem obscuur, bizar, of een totaal vergeten historisch feit/kunstwerk.
+    Beoordeel de volgende artikelen en geef ze een 'obscuriteits_score' van 1 tot 10 (10 = extreem bizar/vergeten).
+    
+    CRUCIALE OPDRACHT:
+    Verschillende bronnen kunnen over hetzelfde onderwerp schrijven (bijv. twee blogs over dezelfde herontdekte stadskaart).
+    Als je artikelen ziet die over HETZELFDE ONDERWERP gaan, kies dan ALLEEN het allerbeste, meest diepgaande of meest obscure artikel uit. 
+    Verwijder de andere bronnen die over hetzelfde onderwerp gaan uit het eindresultaat. We willen absoluut GEEN dubbele onderwerpen.
     
     Schrijf een korte, prikkelende samenvatting in het Nederlands van maximaal 2 zinnen.
-    Behoud de bron-tag in de titel (bijvoorbeeld: [Atlas Obscura] Titel).
     
-    Geef antwoord in dit exacte JSON formaat:
+    Geef antwoord in dit exacte JSON formaat (merk op dat 'bron' een apart veld is!):
     {{
       "artikelen": [
         {{
-          "titel": "Titel van het artikel inclusief de brontag",
+          "titel": "Exacte originele titel van het gekozen artikel",
+          "bron": "Naam van de bron",
           "obscuriteits_score": 8,
           "samenvatting": "Nederlandse samenvatting hier."
         }}
       ]
     }}
     
-    Hier zijn de artikelen:
+    Hier is de oogst:
     {artikelen_tekst}
     """
     
@@ -109,6 +108,7 @@ def sla_parels_op(beoordeling, originele_artikelen):
         return
         
     parels = []
+    # Match de link op basis van de schone titel
     links_dict = {art['titel']: art['link'] for art in originele_artikelen}
     
     for art in beoordeling["artikelen"]:
@@ -126,19 +126,25 @@ def sla_parels_op(beoordeling, originele_artikelen):
             except json.JSONDecodeError:
                 bestaande_data = []
                 
-    bestaande_titels = {b['titel'] for b in bestaande_data}
-    nieuwe_toevoegingen = [p for p in parels if p['titel'] not in bestaande_titels]
+    # We controleren nu op de SCHONE titel (ongeacht de hoofdletters)
+    bestaande_titels = {b['titel'].lower().strip() for b in bestaande_data}
+    nieuwe_toevoegingen = []
+    
+    for p in parels:
+        if p['titel'].lower().strip() not in bestaande_titels:
+            nieuwe_toevoegingen.append(p)
+            # Voeg direct toe aan de set om ook duplicaten binnen de huidige run te blokkeren
+            bestaande_titels.add(p['titel'].lower().strip())
     
     eind_data = bestaande_data + nieuwe_toevoegingen
     
     with open(bestandsnaam, 'w', encoding='utf-8') as f:
         json.dump(eind_data, f, indent=2, ensure_ascii=False)
         
-    print(f"📁 Database bijgewerkt! {len(nieuwe_toevoegingen)} nieuwe parels toegevoegd.")
+    print(f"📁 Database bijgewerkt! {len(nieuwe_toevoegingen)} nieuwe, unieke onderwerpen toegevoegd.")
 
 if __name__ == "__main__":
     gevonden_artikelen = haal_artikelen_multi_bron()
-    
     if gevonden_artikelen:
         ai_beoordeling = beoordeel_met_gemini(gevonden_artikelen)
         sla_parels_op(ai_beoordeling, gevonden_artikelen)
